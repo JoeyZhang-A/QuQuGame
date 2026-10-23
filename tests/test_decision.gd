@@ -3,6 +3,7 @@ extends RefCounted
 const ConfigLib = preload("res://src/core/config.gd")
 const CricketLib = preload("res://src/core/cricket.gd")
 const DecisionLib = preload("res://src/core/decision.gd")
+const MatchLib = preload("res://src/core/match.gd")
 
 
 static func collect() -> Array:
@@ -14,6 +15,8 @@ static func collect() -> Array:
 	out.append(_hold_chain())
 	out.append(_six_cap())
 	out.append(_pure())
+	out.append(_log_bytes())
+	out.append(_log_bytes_other_pair())
 	return out
 
 
@@ -173,6 +176,70 @@ static func _pure() -> Dictionary:
 	if before != after:
 		return _bad(name, before, after)
 	return _ok(name)
+
+
+static func _log_bytes() -> Dictionary:
+	var name: String = "29 同一配置跑两次，日志逐字节相同"
+	var err: String = _compare_logs("abacus", "scale", "match_abacus_scale_a.jsonl", "match_abacus_scale_b.jsonl")
+	if err != "":
+		return _bad(name, "逐字节相同", err)
+	return _ok(name)
+
+
+static func _log_bytes_other_pair() -> Dictionary:
+	var name: String = "30 换一组对阵重复运行，日志仍逐字节相同"
+	var err: String = _compare_logs("fool", "stew", "match_fool_stew_a.jsonl", "match_fool_stew_b.jsonl")
+	if err != "":
+		return _bad(name, "逐字节相同", err)
+	return _ok(name)
+
+
+static func _compare_logs(id1: String, id2: String, file_a: String, file_b: String) -> String:
+	var dir_path: String = ProjectSettings.globalize_path("res://out")
+	DirAccess.make_dir_recursive_absolute(dir_path)
+	var path_a: String = dir_path + "/" + file_a
+	var path_b: String = dir_path + "/" + file_b
+	var count_a: int = _play_log(id1, id2, path_a)
+	var count_b: int = _play_log(id1, id2, path_b)
+	if count_a < 0:
+		return "写日志失败"
+	var bytes_a: PackedByteArray = FileAccess.get_file_as_bytes(path_a)
+	var bytes_b: PackedByteArray = FileAccess.get_file_as_bytes(path_b)
+	if bytes_a.size() != bytes_b.size():
+		return "长度 %d / %d" % [bytes_a.size(), bytes_b.size()]
+	for index in bytes_a.size():
+		if bytes_a[index] != bytes_b[index]:
+			return "第 %d 字节不同" % index
+	var text: String = FileAccess.get_file_as_string(path_a)
+	var lines: PackedStringArray = text.split("\n", false)
+	var starts: int = 0
+	var ends: int = 0
+	var body: int = 0
+	for line in lines:
+		if line.begins_with("{\"type\":\"match_start\""):
+			starts += 1
+		elif line.begins_with("{\"type\":\"match_end\""):
+			ends += 1
+		else:
+			body += 1
+	if starts != 1 or ends != 1:
+		return "头 %d 尾 %d" % [starts, ends]
+	if lines.size() != body + 2 or count_a + 2 != lines.size():
+		return "行数 %d 事件 %d" % [lines.size(), count_a]
+	return ""
+
+
+static func _play_log(id1: String, id2: String, path: String) -> int:
+	var loaded: Dictionary = ConfigLib.load_project()
+	if not bool(loaded["ok"]):
+		return -1
+	var config: Config = loaded["config"]
+	var bout: Match = MatchLib.new(config, id1, id2)
+	bout.open_log(path, 0)
+	bout.run()
+	var events: int = bout.events.size()
+	bout.close_log()
+	return events
 
 
 static func _stamp(actor: Cricket) -> String:

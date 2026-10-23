@@ -4,6 +4,7 @@ class_name Match
 const CricketLib = preload("res://src/core/cricket.gd")
 const RulesLib = preload("res://src/core/rules.gd")
 const DecisionLib = preload("res://src/core/decision.gd")
+const LoggerLib = preload("res://src/core/logger.gd")
 
 const FIXED_ACTION: String = "hold"
 const CLASH_STAMINA: int = -12
@@ -38,6 +39,12 @@ var end_reason: String = ""
 var end_tick: int = -1
 var weights: Dictionary = {}
 var low_stamina: int = 30
+var panic_pressure: int = 85
+var logger: Variant = null
+var log_match_id: int = 0
+var log_cursor: int = 0
+var log_closed: bool = false
+var tick_ms: int = 450
 
 
 func _init(config: Config, first_id: String, second_id: String) -> void:
@@ -55,6 +62,8 @@ func _init(config: Config, first_id: String, second_id: String) -> void:
 	var limits: Dictionary = config.thresholds()
 	flee_stamina = int(limits["flee_stamina"])
 	low_stamina = int(limits["low_stamina"])
+	panic_pressure = int(limits["panic"])
+	tick_ms = config.tick_ms()
 	weights = config.weights()
 	for row in config.crickets():
 		var item: Dictionary = row
@@ -66,6 +75,23 @@ func _init(config: Config, first_id: String, second_id: String) -> void:
 func run() -> void:
 	while tick < max_tick and not finished:
 		step()
+
+
+func open_log(path: String, id_num: int) -> void:
+	logger = LoggerLib.new()
+	logger.open(path)
+	log_match_id = id_num
+	log_cursor = 0
+	log_closed = false
+	logger.write_start(self, id_num, tick_ms, max_tick)
+
+
+func close_log() -> void:
+	_flush_log()
+	_write_log_end()
+	if logger != null:
+		logger.close()
+		logger = null
 
 
 func step_forced(first_action: String, second_action: String) -> void:
@@ -102,6 +128,7 @@ func step() -> void:
 	_resolve_bites(first_intent, second_intent)
 	_recover(first_intent)
 	_recover(second_intent)
+	_flush_log()
 	_check_end()
 	tick += 1
 	if not finished and tick >= max_tick:
@@ -318,8 +345,14 @@ func _apply_clash() -> void:
 	var second_land: Dictionary = RulesLib.resolve("away", second.x, second.y, first.x, first.y, grid_w, grid_h)
 	var first_push: bool = _commit_land(first, first_land)
 	var second_push: bool = _commit_land(second, second_land)
+	var first_old_stamina: int = first.stamina
+	var first_old_pressure: int = first.pressure
+	var second_old_stamina: int = second.stamina
+	var second_old_pressure: int = second.pressure
 	first.apply_deltas(CLASH_STAMINA, CLASH_PRESSURE)
 	second.apply_deltas(CLASH_STAMINA, CLASH_PRESSURE)
+	_watch_crossings(first, first_old_stamina, first_old_pressure)
+	_watch_crossings(second, second_old_stamina, second_old_pressure)
 	events.append({
 		"type": "clash",
 		"tick": tick,
@@ -336,8 +369,11 @@ func _apply_clash() -> void:
 
 func _recover(intent: Dictionary) -> void:
 	var actor: Cricket = intent["actor"]
+	var old_stamina: int = actor.stamina
+	var old_pressure: int = actor.pressure
 	if not bool(intent["skip_recover"]):
 		actor.apply_deltas(int(intent["stamina"]), int(intent["pressure"]))
+		_watch_crossings(actor, old_stamina, old_pressure)
 	actor.note_action(str(intent["action"]))
 	if not bool(intent["locked"]):
 		events.append({
@@ -349,8 +385,12 @@ func _recover(intent: Dictionary) -> void:
 			"from_y": int(intent["from_y"]),
 			"to_x": actor.x,
 			"to_y": actor.y,
+			"facing_x": actor.facing_x,
+			"facing_y": actor.facing_y,
 			"stamina": actor.stamina,
 			"pressure": actor.pressure,
+			"feat": actor.last_features.duplicate(true),
+			"scores": actor.last_scores.duplicate(true),
 		})
 	phase_log.append({
 		"phase": "recover",
@@ -368,6 +408,8 @@ func _run_grapple_tick() -> void:
 	var defn: Cricket = grapple_def
 	var att_before: int = att.stamina
 	var def_before: int = defn.stamina
+	var att_old_pressure: int = att.pressure
+	var def_old_pressure: int = defn.pressure
 	var att_power: int = RulesLib.attack_power(att.stamina, att.param_e, att.pressure)
 	var def_power: int = RulesLib.defense_power(defn.stamina, defn.param_e, defn.pressure)
 	var result: String = RulesLib.grapple_result(
@@ -398,6 +440,8 @@ func _run_grapple_tick() -> void:
 		att_push = _push_away(att, defn)
 	att.apply_deltas(att_sta, att_pre)
 	defn.apply_deltas(def_sta, def_pre)
+	_watch_crossings(att, att_before, att_old_pressure)
+	_watch_crossings(defn, def_before, def_old_pressure)
 	att.stun = true
 	defn.stun = true
 	pending_grapple = false
@@ -416,9 +460,58 @@ func _run_grapple_tick() -> void:
 		"att_push": att_push,
 		"def_push": def_push,
 	})
+	_flush_log()
 	tick += 1
 	if tick >= max_tick:
 		finished = true
+
+
+func _watch_crossings(cricket: Cricket, old_stamina: int, old_pressure: int) -> void:
+	if old_pressure <= 60 and cricket.pressure > 60 and cricket.param_s != 0:
+		var mode: String = "shrink"
+		if cricket.param_s > 0:
+			mode = "rage"
+		events.append({
+			"type": "stress_trigger",
+			"tick": tick,
+			"actor": cricket.id,
+			"pressure": cricket.pressure,
+			"s_centi": cricket.param_s,
+			"mode": mode,
+		})
+	if old_stamina >= low_stamina and cricket.stamina < low_stamina:
+		events.append({
+			"type": "threshold",
+			"tick": tick,
+			"actor": cricket.id,
+			"which": "low_stamina",
+			"value": cricket.stamina,
+		})
+	if old_pressure <= panic_pressure and cricket.pressure > panic_pressure:
+		events.append({
+			"type": "threshold",
+			"tick": tick,
+			"actor": cricket.id,
+			"which": "panic",
+			"value": cricket.pressure,
+		})
+
+
+func _flush_log() -> void:
+	if logger == null:
+		return
+	while log_cursor < events.size():
+		logger.write_event(events[log_cursor])
+		log_cursor += 1
+
+
+func _write_log_end() -> void:
+	if logger == null or log_closed:
+		return
+	if end_reason == "":
+		return
+	log_closed = true
+	logger.write_end(self)
 
 
 func _check_end() -> void:
@@ -444,15 +537,15 @@ func _settle_timeout() -> void:
 		winner_id = first.id
 		loser_id = second.id
 		end_reason = "timeout"
-		return
-	if second_score > first_score:
+	elif second_score > first_score:
 		winner_id = second.id
 		loser_id = first.id
 		end_reason = "timeout"
-		return
-	winner_id = second.id
-	loser_id = first.id
-	end_reason = "draw_tiebreak"
+	else:
+		winner_id = second.id
+		loser_id = first.id
+		end_reason = "draw_tiebreak"
+	_write_log_end()
 
 
 func _end_score(cricket: Cricket) -> int:
@@ -468,6 +561,7 @@ func _finish(winner: Cricket, loser: Cricket, reason: String) -> void:
 	end_reason = reason
 	end_tick = tick
 	finished = true
+	_write_log_end()
 
 
 func _push_away(who: Cricket, source: Cricket) -> bool:
