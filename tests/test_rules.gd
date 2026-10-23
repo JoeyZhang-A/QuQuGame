@@ -13,6 +13,10 @@ static func collect() -> Array:
 	out.append(_occupied())
 	out.append(_one_slot())
 	out.append(_approach_retreat())
+	out.append(_bounds_stress())
+	out.append(_stamina_zero())
+	out.append(_flee())
+	out.append(_timeout_score())
 	return out
 
 
@@ -142,6 +146,115 @@ static func _approach_retreat() -> Dictionary:
 	if retreat_after - retreat_before != 1:
 		return _bad(name, "纵向 retreat 加 1", str(retreat_after - retreat_before))
 	return _ok(name)
+
+
+static func _in_range(bout: Match) -> bool:
+	if bout.first.stamina < 0 or bout.first.stamina > 100:
+		return false
+	if bout.second.stamina < 0 or bout.second.stamina > 100:
+		return false
+	if bout.first.pressure < 0 or bout.first.pressure > 100:
+		return false
+	if bout.second.pressure < 0 or bout.second.pressure > 100:
+		return false
+	return true
+
+
+static func _bounds_stress() -> Dictionary:
+	var name: String = "18 体力与压力永不越出 0..100"
+	var loaded: Dictionary = ConfigLib.load_project()
+	var bout: Match = MatchLib.new(loaded["config"], "fool", "scale")
+	bout.max_tick = 100000
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var names: Array = ["hold", "retreat", "approach", "flank", "bite"]
+	for _i in 1000:
+		if bout.pending_grapple:
+			bout.step()
+		else:
+			var left: String = str(names[rng.randi() % 5])
+			var right: String = str(names[rng.randi() % 5])
+			bout.step_forced(left, right)
+		if not _in_range(bout):
+			return _bad(name, "0..100", "%d/%d %d/%d" % [bout.first.stamina, bout.first.pressure, bout.second.stamina, bout.second.pressure])
+		if bout.finished:
+			bout.finished = false
+			bout.end_reason = ""
+			bout.tick = 0
+			bout.pending_grapple = false
+			bout.first.stun = false
+			bout.second.stun = false
+			bout.first.stamina = 50
+			bout.second.stamina = 50
+			bout.first.pressure = 40
+			bout.second.pressure = 40
+	return _ok(name)
+
+
+static func _stamina_zero() -> Dictionary:
+	var name: String = "19 体力归零判负，reason == stamina_zero"
+	var loaded: Dictionary = ConfigLib.load_project()
+	var bout: Match = MatchLib.new(loaded["config"], "fool", "scale")
+	bout.first.stamina = 8
+	bout.step_forced("bite", "hold")
+	if bout.end_reason != "stamina_zero":
+		return _bad(name, "stamina_zero", bout.end_reason)
+	if bout.loser_id != "fool" or bout.winner_id != "scale":
+		return _bad(name, "scale 胜 fool 负", "%s/%s" % [bout.winner_id, bout.loser_id])
+	if bout.first.stamina != 0:
+		return _bad(name, "体力 0", str(bout.first.stamina))
+	return _ok(name)
+
+
+static func _flee() -> Dictionary:
+	var name: String = "20 体力 < 20 且连续 2 拍后撤判负，reason == flee"
+	var loaded: Dictionary = ConfigLib.load_project()
+	var bout: Match = MatchLib.new(loaded["config"], "fool", "scale")
+	_separate(bout)
+	bout.first.stamina = 10
+	bout.step_forced("retreat", "hold")
+	if bout.end_reason != "":
+		return _bad(name, "第一拍不结束", bout.end_reason)
+	bout.step_forced("retreat", "hold")
+	if bout.end_reason != "flee":
+		return _bad(name, "flee", "%s stamina=%d" % [bout.end_reason, bout.first.stamina])
+	if bout.loser_id != "fool":
+		return _bad(name, "fool 负", bout.loser_id)
+	return _ok(name)
+
+
+static func _separate(bout: Match) -> void:
+	bout.first.x = 0
+	bout.first.y = 1
+	bout.first.facing_x = 1
+	bout.second.x = 4
+	bout.second.y = 1
+	bout.second.facing_x = -1
+
+
+static func _timeout_score() -> Dictionary:
+	var name: String = "21 超时按 stamina + 中心槽加成比分，相同则后手胜"
+	var higher: Dictionary = _play_timeout(40, 2, 1, 40, 0, 1)
+	if str(higher["reason"]) != "timeout" or str(higher["winner"]) != "fool":
+		return _bad(name, "中心槽更高者 timeout 胜", "%s %s" % [str(higher["reason"]), str(higher["winner"])])
+	var tied: Dictionary = _play_timeout(40, 0, 1, 40, 4, 1)
+	if str(tied["reason"]) != "draw_tiebreak" or str(tied["winner"]) != "scale":
+		return _bad(name, "平分后手胜", "%s %s" % [str(tied["reason"]), str(tied["winner"])])
+	return _ok(name)
+
+
+static func _play_timeout(ast: int, ax: int, ay: int, bst: int, bx: int, by: int) -> Dictionary:
+	var loaded: Dictionary = ConfigLib.load_project()
+	var bout: Match = MatchLib.new(loaded["config"], "fool", "scale")
+	bout.tick = 132
+	bout.first.stamina = ast
+	bout.second.stamina = bst
+	bout.first.x = ax
+	bout.first.y = ay
+	bout.second.x = bx
+	bout.second.y = by
+	bout.step_forced("hold", "hold")
+	return {"reason": bout.end_reason, "winner": bout.winner_id}
 
 
 static func _distance_pair(x: int, y: int, opp_x: int, opp_y: int) -> Dictionary:

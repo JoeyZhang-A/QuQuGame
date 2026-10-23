@@ -1,10 +1,15 @@
 extends SceneTree
 
 const RulesTest = preload("res://tests/test_rules.gd")
+const GrappleTest = preload("res://tests/test_grapple.gd")
+const DecisionTest = preload("res://tests/test_decision.gd")
 
 
 func _initialize() -> void:
-	var results: Array = RulesTest.collect()
+	var results: Array = []
+	results.append_array(RulesTest.collect())
+	results.append_array(GrappleTest.collect())
+	results.append_array(DecisionTest.collect())
 	var failed: int = 0
 	for item in results:
 		var row: Dictionary = item

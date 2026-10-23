@@ -91,6 +91,45 @@ static func _better(dist: int, align: int, best_dist: int, best_align: int, towa
 	return align > best_align
 
 
+static func idiv(numerator: int, denominator: int) -> int:
+	return int(float(numerator) / float(denominator))
+
+
+static func attack_power(stamina: int, endurance_centi: int, pressure: int) -> int:
+	var effect: int = 600 + idiv(400 * endurance_centi, 100)
+	var power: int = idiv(stamina * effect, 1000)
+	if pressure > 85:
+		power = idiv(power * 850, 1000)
+	return power
+
+
+static func defense_power(stamina: int, endurance_centi: int, pressure: int) -> int:
+	var effect: int = 600 + idiv(400 * endurance_centi, 100)
+	var power: int = idiv(idiv(stamina * effect * 900, 1000), 1000)
+	if pressure > 85:
+		power = idiv(power * 850, 1000)
+	return power
+
+
+static func grapple_result(att_power: int, def_power: int, win_num: int, win_den: int, lose_num: int, lose_den: int) -> String:
+	if att_power >= idiv(def_power * win_num, win_den):
+		return "suppressed"
+	if att_power <= idiv(def_power * lose_num, lose_den):
+		return "countered"
+	return "even"
+
+
+static func bite_outcome(att_x: int, att_y: int, facing_x: int, facing_y: int, def_x: int, def_y: int, defender_retreated: bool) -> Dictionary:
+	if defender_retreated:
+		return {"hit": false, "reason": "retreated"}
+	if manhattan(att_x, att_y, def_x, def_y) > 1:
+		return {"hit": false, "reason": "out_of_range"}
+	var dot: int = (def_x - att_x) * facing_x + (def_y - att_y) * facing_y
+	if dot <= 0:
+		return {"hit": false, "reason": "facing"}
+	return {"hit": true, "reason": ""}
+
+
 static func _flank_delta(x: int, y: int, opp_x: int, opp_y: int, grid_w: int, grid_h: int) -> Array:
 	var up_y: int = y + 1
 	if in_bounds(x, up_y, grid_w, grid_h) and not (x == opp_x and up_y == opp_y):
