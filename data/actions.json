@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "tick_ms": 450,
+  "max_tick": 133,
+  "grid": { "w": 5, "h": 3 },
+  "center": [2, 1],
+  "actions": {
+    "hold":     { "windup": 0,   "active": 380, "recover": 70,  "move": [0, 0],  "stamina": 2,  "pressure": -8 },
+    "retreat":  { "windup": 100, "active": 250, "recover": 100, "move": "away", "stamina": 4,  "pressure": -6 },
+    "approach": { "windup": 180, "active": 220, "recover": 50,  "move": "near", "stamina": -3, "pressure": 4  },
+    "flank":    { "windup": 240, "active": 160, "recover": 50,  "move": "side", "stamina": -5, "pressure": 2  },
+    "bite":     { "windup": 280, "active": 120, "recover": 50,  "move": [0, 0],  "stamina": -8, "pressure": 0  }
+  },
+  "grapple": {
+    "suppress_att": -6,  "suppress_def": -18,
+    "counter_att": -14,  "counter_def": -4,
+    "even_att": -8,      "even_def": -8,
+    "suppress_pressure_att": 8,  "suppress_pressure_def": 25,
+    "counter_pressure_att": 18,  "counter_pressure_def": 6,
+    "even_pressure": 10,
+    "win_ratio": 1.15, "lose_ratio": 0.87
+  },
+  "thresholds": { "low_stamina": 30, "stress": 60, "panic": 85, "flee_stamina": 20 },
+  "scoring": { "center_bonus": 15, "flee_consecutive": 2 }
+}

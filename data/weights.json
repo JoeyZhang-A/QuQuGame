@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "base":     { "hold": 200, "retreat": 150, "approach": 200, "flank": 200, "bite": 100 },
+  "feature": {
+    "hold":     { "near": 250,  "far": 100,  "face": 0,    "sta": 200,  "pre": -250, "sup": -150, "sdn": 200 },
+    "retreat":  { "near": -300, "far": 100,  "face": 0,    "sta": -600, "pre": 0,    "sup": -200, "sdn": 350 },
+    "approach": { "near": -250, "far": 500,  "face": 0,    "sta": 0,    "pre": 0,    "sup": 100,  "sdn": -150 },
+    "flank":    { "near": 150,  "far": -100, "face": 200,  "sta": 0,    "pre": 0,    "sup": 0,    "sdn": 100 },
+    "bite":     { "near": 600,  "far": -400, "face": 350,  "sta": 250,  "pre": 0,    "sup": 400,  "sdn": -300 }
+  },
+  "personality": {
+    "hold":     { "A": -250, "R": -100, "E": 350 },
+    "retreat":  { "A": -150, "R": -350, "E": 50  },
+    "approach": { "A": 300,  "R": 50,   "E": -100 },
+    "flank":    { "A": -100, "R": 350,  "E": 50  },
+    "bite":     { "A": 400,  "R": 250,  "E": -250 }
+  },
+  "repeat_penalty": { "hold": 120, "retreat": 200, "approach": 150, "flank": 250, "bite": 300 },
+  "action_order": ["bite", "approach", "flank", "hold", "retreat"],
+  "deadlock": { "hold_chain_start": 3, "hold_chain_penalty": 120, "same_action_limit": 6 }
+}
