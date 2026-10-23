@@ -3,6 +3,7 @@ class_name Match
 
 const CricketLib = preload("res://src/core/cricket.gd")
 const RulesLib = preload("res://src/core/rules.gd")
+const DecisionLib = preload("res://src/core/decision.gd")
 
 const FIXED_ACTION: String = "hold"
 const CLASH_STAMINA: int = -12
@@ -35,6 +36,8 @@ var winner_id: String = ""
 var loser_id: String = ""
 var end_reason: String = ""
 var end_tick: int = -1
+var weights: Dictionary = {}
+var low_stamina: int = 30
 
 
 func _init(config: Config, first_id: String, second_id: String) -> void:
@@ -51,6 +54,8 @@ func _init(config: Config, first_id: String, second_id: String) -> void:
 	flee_consecutive = int(scoring["flee_consecutive"])
 	var limits: Dictionary = config.thresholds()
 	flee_stamina = int(limits["flee_stamina"])
+	low_stamina = int(limits["low_stamina"])
+	weights = config.weights()
 	for row in config.crickets():
 		var item: Dictionary = row
 		roster[str(item["id"])] = item
@@ -105,7 +110,8 @@ func step() -> void:
 
 static func simulate_hold(config: Config, first_id: String, second_id: String) -> Dictionary:
 	var bout: Match = Match.new(config, first_id, second_id)
-	bout.run()
+	while bout.tick < bout.max_tick and not bout.finished:
+		bout.step_forced("hold", "hold")
 	var hold_before: int = bout.first.consec_hold
 	var tick_before: int = bout.tick
 	bout.step()
@@ -151,7 +157,7 @@ func _make(id: String, x: int, y: int, facing_x: int, facing_y: int) -> Cricket:
 
 
 func _intend(actor: Cricket, opp: Cricket, locked: bool) -> Dictionary:
-	var action_name: String = "hold" if locked else _action_for(actor)
+	var action_name: String = _choose_action(actor, opp, locked)
 	var spec: Dictionary = actions[action_name]
 	var delta: Array = RulesLib.delta_for_move(spec["move"], actor.x, actor.y, opp.x, opp.y, grid_w, grid_h)
 	var dx: int = int(delta[0])
@@ -178,6 +184,17 @@ func _intend(actor: Cricket, opp: Cricket, locked: bool) -> Dictionary:
 		"skip_recover": false,
 		"locked": locked,
 	}
+
+
+func _choose_action(actor: Cricket, opp: Cricket, locked: bool) -> String:
+	if locked:
+		return "hold"
+	if scripted.size() == 2:
+		return _action_for(actor)
+	var choice: Dictionary = DecisionLib.evaluate(actor, opp, weights, low_stamina)
+	actor.last_features = choice["features"]
+	actor.last_scores = choice["scores"]
+	return str(choice["action"])
 
 
 func _action_for(actor: Cricket) -> String:
