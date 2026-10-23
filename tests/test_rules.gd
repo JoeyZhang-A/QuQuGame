@@ -120,6 +120,9 @@ static func _one_slot() -> Dictionary:
 						var changed: bool = dx + dy > 0
 						if bool(resolved["moved"]) != changed:
 							return _bad(name, "moved 与位移一致", str(resolved))
+	var flank: Dictionary = RulesLib.resolve("side", 1, 1, 3, 1, 5, 3)
+	if int(flank["x"]) != 1 or int(flank["y"]) != 2:
+		return _bad(name, "flank 只改 y 到 (1,2)", "(%s,%s)" % [str(flank["x"]), str(flank["y"])])
 	return _ok(name)
 
 

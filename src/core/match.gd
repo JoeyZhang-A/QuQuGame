@@ -4,7 +4,7 @@ class_name Match
 const CricketLib = preload("res://src/core/cricket.gd")
 const RulesLib = preload("res://src/core/rules.gd")
 
-# T2：决策尚未接入，每拍动作固定为 hold。
+# 决策在 T6 接入。在此之前，未指定动作的拍固定为 hold。
 const FIXED_ACTION: String = "hold"
 
 var tick: int = 0
@@ -15,6 +15,9 @@ var finished: bool = false
 var actions: Dictionary = {}
 var first: Cricket
 var second: Cricket
+var scripted: Array = []
+var phase_log: Array = []
+var move_log: Array = []
 
 
 func _init(config: Config, first_id: String, second_id: String) -> void:
@@ -27,14 +30,21 @@ func _init(config: Config, first_id: String, second_id: String) -> void:
 
 
 func run() -> void:
-	while tick < max_tick:
+	while tick < max_tick and not finished:
 		step()
+
+
+func step_forced(first_action: String, second_action: String) -> void:
+	scripted = [first_action, second_action]
+	step()
+	scripted = []
 
 
 func step() -> void:
 	if tick >= max_tick:
 		finished = true
 		return
+	phase_log = []
 	var first_x: int = first.x
 	var first_y: int = first.y
 	var second_x: int = second.x
@@ -42,8 +52,12 @@ func step() -> void:
 	var first_intent: Dictionary = _intend(first, second)
 	var second_intent: Dictionary = _intend(second, first)
 	_cancel_same_target(first_intent, second_intent)
-	_apply(first_intent, second_x, second_y)
-	_apply(second_intent, first_x, first_y)
+	_windup(first_intent)
+	_windup(second_intent)
+	_active(first_intent, second_x, second_y)
+	_active(second_intent, first_x, first_y)
+	_recover(first_intent)
+	_recover(second_intent)
 	tick += 1
 	if tick >= max_tick:
 		finished = true
@@ -90,7 +104,7 @@ func _make(id: String, x: int, y: int, facing_x: int, facing_y: int) -> Cricket:
 
 
 func _intend(actor: Cricket, opp: Cricket) -> Dictionary:
-	var action_name: String = FIXED_ACTION
+	var action_name: String = _action_for(actor)
 	var spec: Dictionary = actions[action_name]
 	var delta: Array = RulesLib.delta_for_move(spec["move"], actor.x, actor.y, opp.x, opp.y, grid_w, grid_h)
 	var dx: int = int(delta[0])
@@ -103,9 +117,22 @@ func _intend(actor: Cricket, opp: Cricket) -> Dictionary:
 		"action": action_name,
 		"dx": dx,
 		"dy": dy,
+		"from_x": actor.x,
+		"from_y": actor.y,
 		"stamina": int(spec["stamina"]),
 		"pressure": int(spec["pressure"]),
+		"windup": int(spec["windup"]),
+		"active": int(spec["active"]),
+		"recover": int(spec["recover"]),
 	}
+
+
+func _action_for(actor: Cricket) -> String:
+	if scripted.size() != 2:
+		return FIXED_ACTION
+	if actor == first:
+		return str(scripted[0])
+	return str(scripted[1])
 
 
 func _cancel_same_target(lead: Dictionary, follow: Dictionary) -> void:
@@ -124,7 +151,20 @@ func _cancel_same_target(lead: Dictionary, follow: Dictionary) -> void:
 		follow["dy"] = 0
 
 
-func _apply(intent: Dictionary, opp_x: int, opp_y: int) -> void:
+func _windup(intent: Dictionary) -> void:
+	var actor: Cricket = intent["actor"]
+	phase_log.append({
+		"phase": "windup",
+		"id": actor.id,
+		"action": str(intent["action"]),
+		"x": actor.x,
+		"y": actor.y,
+		"stamina": actor.stamina,
+		"ms": int(intent["windup"]),
+	})
+
+
+func _active(intent: Dictionary, opp_x: int, opp_y: int) -> void:
 	var actor: Cricket = intent["actor"]
 	var applied: Dictionary = RulesLib.apply_step(actor.x, actor.y, int(intent["dx"]), int(intent["dy"]), opp_x, opp_y, grid_w, grid_h)
 	if bool(applied["moved"]):
@@ -134,5 +174,37 @@ func _apply(intent: Dictionary, opp_x: int, opp_y: int) -> void:
 		actor.facing_y = next_y - actor.y
 		actor.x = next_x
 		actor.y = next_y
+	intent["moved"] = bool(applied["moved"])
+	phase_log.append({
+		"phase": "active",
+		"id": actor.id,
+		"action": str(intent["action"]),
+		"x": actor.x,
+		"y": actor.y,
+		"stamina": actor.stamina,
+		"ms": int(intent["active"]),
+	})
+	move_log.append({
+		"tick": tick,
+		"id": actor.id,
+		"action": str(intent["action"]),
+		"from_x": int(intent["from_x"]),
+		"from_y": int(intent["from_y"]),
+		"to_x": actor.x,
+		"to_y": actor.y,
+	})
+
+
+func _recover(intent: Dictionary) -> void:
+	var actor: Cricket = intent["actor"]
 	actor.apply_deltas(int(intent["stamina"]), int(intent["pressure"]))
 	actor.note_action(str(intent["action"]))
+	phase_log.append({
+		"phase": "recover",
+		"id": actor.id,
+		"action": str(intent["action"]),
+		"x": actor.x,
+		"y": actor.y,
+		"stamina": actor.stamina,
+		"ms": int(intent["recover"]),
+	})
