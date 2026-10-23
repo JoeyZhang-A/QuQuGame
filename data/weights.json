@@ -12,8 +12,8 @@
     "hold":     { "A": -250, "R": -100, "E": 350 },
     "retreat":  { "A": -150, "R": -350, "E": 50  },
     "approach": { "A": 300,  "R": 50,   "E": -100 },
-    "flank":    { "A": -100, "R": 350,  "E": 50  },
-    "bite":     { "A": 400,  "R": 250,  "E": -250 }
+    "flank":    { "A": -100, "R": 700,  "E": 50  },
+    "bite":     { "A": 300,  "R": 250,  "E": -250 }
   },
   "repeat_penalty": { "hold": 120, "retreat": 200, "approach": 150, "flank": 250, "bite": 300 },
   "action_order": ["bite", "approach", "flank", "hold", "retreat"],

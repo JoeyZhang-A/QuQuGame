@@ -81,7 +81,7 @@ static func _stable() -> Dictionary:
 	var opp: Cricket = pair[1]
 	var weights: Dictionary = _weights()
 	var features: Dictionary = DecisionLib.compute_features(actor, opp)
-	var expected: Dictionary = {"hold": 25510, "retreat": -4180, "approach": -1925, "flank": 8175, "bite": -10000}
+	var expected: Dictionary = {"hold": 25510, "retreat": -4180, "approach": -1925, "flank": 13425, "bite": -12000}
 	for action_name in expected.keys():
 		var actual: int = DecisionLib.score_action(str(action_name), features, actor, weights, 30)
 		if actual != int(expected[action_name]):
